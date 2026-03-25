@@ -558,6 +558,24 @@
                 msgDiv.style.display = 'none';
             }, 3000);
         }
+        // Load data from localStorage
+        function loadData() {
+            const savedDonors = localStorage.getItem('bloodBank_donors');
+            const savedRequests = localStorage.getItem('bloodBank_requests');
+            
+            if (savedDonors) {
+                donors = JSON.parse(savedDonors);
+            }
+            if (savedRequests) {
+                requests = JSON.parse(savedRequests);
+            }
+        }
+
+        // Save data to localStorage
+        function saveData() {
+            localStorage.setItem('bloodBank_donors', JSON.stringify(donors));
+            localStorage.setItem('bloodBank_requests', JSON.stringify(requests));
+        }
 
         function clearDonorForm() {
             document.getElementById('donorName').value = '';
