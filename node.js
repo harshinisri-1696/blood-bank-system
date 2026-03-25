@@ -1,90 +1,33 @@
+// server.js - In-memory storage (NO disk needed!)
 const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const path = require('path');
 
 const app = express();
-
-// Middleware
 app.use(cors());
 app.use(express.json());
-
-// Serve static files from current directory
 app.use(express.static(__dirname));
 
-// Create SQLite database
-const db = new sqlite3.Database(path.join(__dirname, 'blood_bank.db'), (err) => {
-    if (err) {
-        console.error('❌ Database error:', err.message);
-    } else {
-        console.log('✅ Connected to SQLite database');
-        
-        // Create tables
-        db.run(`CREATE TABLE IF NOT EXISTS donors (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            age INTEGER NOT NULL,
-            blood_group TEXT NOT NULL,
-            phone TEXT NOT NULL,
-            address TEXT,
-            donation_date TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
-        
-        db.run(`CREATE TABLE IF NOT EXISTS blood_requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            patient_name TEXT NOT NULL,
-            blood_group TEXT NOT NULL,
-            quantity INTEGER NOT NULL,
-            hospital TEXT,
-            contact TEXT NOT NULL,
-            urgency TEXT DEFAULT 'Normal',
-            status TEXT DEFAULT 'Pending',
-            request_date DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
-        
-        // Insert sample data if empty
-        db.get("SELECT COUNT(*) as count FROM donors", [], (err, row) => {
-            if (!err && row && row.count === 0) {
-                const sampleDonors = [
-                    ['John Doe', 28, 'A+', '9876543210', 'New York', '2024-01-15'],
-                    ['Sarah Smith', 24, 'O+', '9876543211', 'Los Angeles', '2024-02-10'],
-                    ['Mike Johnson', 32, 'B+', '9876543212', 'Chicago', '2024-01-20']
-                ];
-                sampleDonors.forEach(donor => {
-                    db.run("INSERT INTO donors (name, age, blood_group, phone, address, donation_date) VALUES (?, ?, ?, ?, ?, ?)", donor);
-                });
-                console.log('📊 Sample donors added');
-            }
-        });
-        
-        db.get("SELECT COUNT(*) as count FROM blood_requests", [], (err, row) => {
-            if (!err && row && row.count === 0) {
-                const sampleRequests = [
-                    ['Alice Johnson', 'A+', 2, 'City Hospital', '9876543220', 'High'],
-                    ['Bob Williams', 'O+', 3, 'Medical Center', '9876543221', 'Normal']
-                ];
-                sampleRequests.forEach(req => {
-                    db.run("INSERT INTO blood_requests (patient_name, blood_group, quantity, hospital, contact, urgency) VALUES (?, ?, ?, ?, ?, ?)", req);
-                });
-                console.log('📊 Sample requests added');
-            }
-        });
-    }
-});
+// In-memory data storage (no database file needed!)
+let donors = [
+    { id: 1, name: 'John Doe', age: 28, blood_group: 'A+', phone: '9876543210', address: 'New York', donation_date: '2024-01-15', created_at: new Date() },
+    { id: 2, name: 'Sarah Smith', age: 24, blood_group: 'O+', phone: '9876543211', address: 'Los Angeles', donation_date: '2024-02-10', created_at: new Date() },
+    { id: 3, name: 'Mike Johnson', age: 32, blood_group: 'B+', phone: '9876543212', address: 'Chicago', donation_date: '2024-01-20', created_at: new Date() }
+];
+
+let bloodRequests = [
+    { id: 1, patient_name: 'Alice Johnson', blood_group: 'A+', quantity: 2, hospital: 'City Hospital', contact: '9876543220', urgency: 'High', status: 'Pending', request_date: new Date() },
+    { id: 2, patient_name: 'Bob Williams', blood_group: 'O+', quantity: 3, hospital: 'Medical Center', contact: '9876543221', urgency: 'Normal', status: 'Pending', request_date: new Date() }
+];
+
+let nextDonorId = 4;
+let nextRequestId = 3;
 
 // ============ API ENDPOINTS ============
 
 // Get all donors
 app.get('/api/donors', (req, res) => {
-    db.all("SELECT * FROM donors ORDER BY created_at DESC", [], (err, rows) => {
-        if (err) {
-            console.error('Error fetching donors:', err);
-            res.status(500).json({ error: err.message });
-        } else {
-            res.json(rows || []);
-        }
-    });
+    res.json(donors);
 });
 
 // Add new donor
@@ -95,39 +38,32 @@ app.post('/api/donors', (req, res) => {
         return res.status(400).json({ error: 'Missing required fields' });
     }
     
-    const query = "INSERT INTO donors (name, age, blood_group, phone, address, donation_date) VALUES (?, ?, ?, ?, ?, ?)";
-    db.run(query, [name, age, blood_group, phone, address, donation_date || null], function(err) {
-        if (err) {
-            console.error('Error adding donor:', err);
-            res.status(500).json({ error: err.message });
-        } else {
-            res.json({ id: this.lastID, message: 'Donor added successfully' });
-        }
-    });
+    const newDonor = {
+        id: nextDonorId++,
+        name,
+        age,
+        blood_group,
+        phone,
+        address: address || '',
+        donation_date: donation_date || null,
+        created_at: new Date()
+    };
+    
+    donors.unshift(newDonor);
+    console.log('✅ Donor added:', newDonor.name);
+    res.json({ id: newDonor.id, message: 'Donor added successfully' });
 });
 
 // Delete donor
 app.delete('/api/donors/:id', (req, res) => {
-    db.run("DELETE FROM donors WHERE id = ?", [req.params.id], function(err) {
-        if (err) {
-            console.error('Error deleting donor:', err);
-            res.status(500).json({ error: err.message });
-        } else {
-            res.json({ message: 'Donor deleted successfully' });
-        }
-    });
+    const id = parseInt(req.params.id);
+    donors = donors.filter(d => d.id !== id);
+    res.json({ message: 'Donor deleted successfully' });
 });
 
 // Get all blood requests
 app.get('/api/requests', (req, res) => {
-    db.all("SELECT * FROM blood_requests ORDER BY request_date DESC", [], (err, rows) => {
-        if (err) {
-            console.error('Error fetching requests:', err);
-            res.status(500).json({ error: err.message });
-        } else {
-            res.json(rows || []);
-        }
-    });
+    res.json(bloodRequests);
 });
 
 // Add new blood request
@@ -138,44 +74,45 @@ app.post('/api/requests', (req, res) => {
         return res.status(400).json({ error: 'Missing required fields' });
     }
     
-    const query = "INSERT INTO blood_requests (patient_name, blood_group, quantity, hospital, contact, urgency) VALUES (?, ?, ?, ?, ?, ?)";
-    db.run(query, [patient_name, blood_group, quantity, hospital, contact, urgency || 'Normal'], function(err) {
-        if (err) {
-            console.error('Error adding request:', err);
-            res.status(500).json({ error: err.message });
-        } else {
-            res.json({ id: this.lastID, message: 'Request submitted successfully' });
-        }
-    });
+    const newRequest = {
+        id: nextRequestId++,
+        patient_name,
+        blood_group,
+        quantity,
+        hospital: hospital || '',
+        contact,
+        urgency: urgency || 'Normal',
+        status: 'Pending',
+        request_date: new Date()
+    };
+    
+    bloodRequests.unshift(newRequest);
+    console.log('✅ Request added:', newRequest.patient_name);
+    res.json({ id: newRequest.id, message: 'Request submitted successfully' });
 });
 
 // Update request status
 app.put('/api/requests/:id', (req, res) => {
+    const id = parseInt(req.params.id);
     const { status } = req.body;
-    db.run("UPDATE blood_requests SET status = ? WHERE id = ?", [status, req.params.id], function(err) {
-        if (err) {
-            console.error('Error updating request:', err);
-            res.status(500).json({ error: err.message });
-        } else {
-            res.json({ message: 'Status updated successfully' });
-        }
-    });
+    const request = bloodRequests.find(r => r.id === id);
+    if (request) {
+        request.status = status;
+    }
+    res.json({ message: 'Status updated successfully' });
 });
 
 // Get statistics
 app.get('/api/stats', (req, res) => {
-    db.get("SELECT COUNT(*) as total FROM donors", [], (err, donorCount) => {
-        const totalDonors = (err || !donorCount) ? 0 : donorCount.total;
-        db.get("SELECT COUNT(*) as pending FROM blood_requests WHERE status = 'Pending'", [], (err, pendingCount) => {
-            const pendingRequests = (err || !pendingCount) ? 0 : pendingCount.pending;
-            db.all("SELECT blood_group, COUNT(*) as count FROM donors GROUP BY blood_group", [], (err, groups) => {
-                res.json({
-                    totalDonors: totalDonors,
-                    pendingRequests: pendingRequests,
-                    bloodGroups: groups || []
-                });
-            });
-        });
+    const bloodGroups = {};
+    donors.forEach(d => {
+        bloodGroups[d.blood_group] = (bloodGroups[d.blood_group] || 0) + 1;
+    });
+    
+    res.json({
+        totalDonors: donors.length,
+        pendingRequests: bloodRequests.filter(r => r.status === 'Pending').length,
+        bloodGroups: Object.entries(bloodGroups).map(([blood_group, count]) => ({ blood_group, count }))
     });
 });
 
@@ -183,42 +120,16 @@ app.get('/api/stats', (req, res) => {
 app.get('/api/test', (req, res) => {
     res.json({ 
         message: 'Blood Bank API is running!',
-        database: 'SQLite',
-        status: 'online',
+        storage: 'In-memory (data resets on restart)',
+        donors_count: donors.length,
+        requests_count: bloodRequests.length,
         timestamp: new Date().toISOString()
     });
 });
 
-// ============ FRONTEND ROUTES ============
-
-// IMPORTANT: Serve frontend.html for root route
+// Serve frontend
 app.get('/', (req, res) => {
-    const indexPath = path.join(__dirname, 'frontend.html');
-    res.sendFile(indexPath, (err) => {
-        if (err) {
-            console.error('Error serving frontend.html:', err);
-            res.status(404).send(`
-                <h1>🩸 Blood Bank System</h1>
-                <p>Frontend file not found. Please check deployment.</p>
-                <p>API is working! Visit <a href="/api/test">/api/test</a></p>
-            `);
-        }
-    });
-});
-
-// Health check endpoint for Render
-app.get('/health', (req, res) => {
-    res.status(200).send('OK');
-});
-
-// Catch-all route - serve frontend for any unknown routes
-app.get('*', (req, res) => {
-    const indexPath = path.join(__dirname, 'frontend.html');
-    res.sendFile(indexPath, (err) => {
-        if (err) {
-            res.status(404).json({ error: 'Page not found' });
-        }
-    });
+    res.sendFile(path.join(__dirname, 'frontend.html'));
 });
 
 // Start server
@@ -226,9 +137,7 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`\n🚀 Blood Bank Server is running!`);
     console.log(`📍 URL: http://localhost:${PORT}`);
-    console.log(`📝 Test: http://localhost:${PORT}/api/test`);
-    console.log(`💾 Database: SQLite (blood_bank.db)`);
-    console.log(`📁 Current directory: ${__dirname}`);
-    console.log(`📄 Frontend exists: ${require('fs').existsSync(path.join(__dirname, 'frontend.html')) ? '✅ Yes' : '❌ No'}`);
-    console.log(`\n✅ Ready to deploy on Render!\n`);
+    console.log(`💾 Storage: In-memory (no disk needed, completely free!)`);
+    console.log(`📊 Current data: ${donors.length} donors, ${bloodRequests.length} requests`);
+    console.log(`\n⚠️  Note: Data resets when server restarts (perfect for demo!)\n`);
 });
